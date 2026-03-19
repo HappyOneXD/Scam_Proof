@@ -6,7 +6,7 @@ require_once '../Database/database.php';
 GEMINI API KEY
 ========================= */
 $dotenv_path = __DIR__ . '/.env';
-$GEMINI_API_KEY = '';
+$GEMINI_API_KEY = 'AIzaSyCqPGUhZhcWv_GXVTsflvshvUIbCrVUNbg';
 if (file_exists($dotenv_path)) {
     $lines = file($dotenv_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
@@ -20,23 +20,44 @@ if (file_exists($dotenv_path)) {
 ACTIVITY LOG FUNCTION
 ========================= */
 function addLog($conn, $action, $target) {
-    $user_id = $_SESSION['user_id'] ?? NULL;
+    $user_id  = $_SESSION['user_id']  ?? NULL;
     $username = $_SESSION['user_name'] ?? "Guest";
-    $role = $_SESSION['role'] ?? "Guest";
-    $ip = $_SERVER['REMOTE_ADDR'];
-    $browser = $_SERVER['HTTP_USER_AGENT'];
+    $role     = $_SESSION['role']      ?? "Guest";
+
+    // Normalise role to valid ENUM
+    $allowed_roles = ["Admin","User","Employee","Guest"];
+    if (!in_array($role, $allowed_roles)) {
+        $role = "User";
+    }
+
+    // IP + UA with fallbacks
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ip = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0];
+    } else {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    }
+    $browser = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
 
     $stmt = $conn->prepare("
         INSERT INTO activity_logs
         (user_id, username, role, action, target, ip_address, user_agent)
         VALUES (?,?,?,?,?,?,?)
     ");
+
+    if (!$stmt) {
+        error_log("addLog prepare error (email.php): ".$conn->error);
+        return;
+    }
+
     $stmt->bind_param("issssss", $user_id, $username, $role, $action, $target, $ip, $browser);
-    $stmt->execute();
+    if (!$stmt->execute()) {
+        error_log("addLog execute error (email.php): ".$stmt->error." user_id=".var_export($user_id,true));
+    }
+    $stmt->close();
 }
 
 /* =========================
-GEMINI EMAIL ANALYSIS
+GEMINI EMAIL ANALYSIS (scan.php style)
 ========================= */
 function analyse_email_with_gemini(string $sender, string $subject, string $body, array $attachments, string $api_key): array {
     if (!$api_key) {
@@ -47,8 +68,11 @@ function analyse_email_with_gemini(string $sender, string $subject, string $body
         ];
     }
 
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-    $attachmentDesc = empty($attachments) ? "none" : implode(', ', $attachments);
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+
+    $attachmentDesc = empty($attachments)
+        ? "none"
+        : implode(', ', $attachments);
 
     $prompt = "You are a security assistant. Analyse the following email for phishing or scam.\n"
             . "Consider sender, subject, body and attachment types.\n"
@@ -71,7 +95,9 @@ function analyse_email_with_gemini(string $sender, string $subject, string $body
                 ['text' => $emailDetails],
             ],
         ]],
-        'generationConfig' => ['response_mime_type' => 'application/json'],
+        'generationConfig' => [
+            'response_mime_type' => 'application/json',
+        ],
     ];
 
     $ch = curl_init();
@@ -86,27 +112,47 @@ function analyse_email_with_gemini(string $sender, string $subject, string $body
 
     $rawResponse = curl_exec($ch);
     if ($rawResponse === false) {
+        $err = curl_error($ch);
         curl_close($ch);
-        return ['risk_level' => 'unknown', 'reasons' => ['Failed to contact AI service.'], 'advice' => 'Try again later.'];
+        error_log('Gemini CURL error (email.php): '.$err);
+        return [
+            'risk_level' => 'unknown',
+            'reasons'    => ['Failed to contact AI service (curl error).'],
+            'advice'     => 'Try again later and be cautious with this email.'
+        ];
     }
     curl_close($ch);
 
     $data = json_decode($rawResponse, true);
 
-    if (isset($data['error'])) {
-        $msg = $data['error']['message'] ?? 'Unknown Gemini API error.';
-        return ['risk_level' => 'unknown', 'reasons' => ["AI error: {$msg}"], 'advice' => 'AI analysis unavailable. Be careful.'];
+if (isset($data['error'])) {
+        $msg    = $data['error']['message'] ?? 'Unknown error from Gemini API.';
+        $code   = $data['error']['code']    ?? 0;
+        $status = $data['error']['status']  ?? '';
+
+        // Log full error for debugging
+        error_log('Gemini API error (email.php): '.json_encode($data));
+
+        return [
+            'risk_level' => 'unknown',
+            'reasons'    => ["Gemini API error ({$code} {$status}): {$msg}"],
+            'advice'     => 'AI analysis is temporarily unavailable. Be careful with this email.'
+        ];
     }
 
     $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+    // 1) Try direct JSON
     $parsed = json_decode($text, true);
 
+    // 2) Try to extract JSON object {...} from text
     if (!is_array($parsed) || !isset($parsed['risk_level'])) {
         if (preg_match('/\{.*\}/s', $text, $m)) {
             $parsed = json_decode($m[0], true);
         }
     }
 
+    // 3) If JSON with risk_level, use it
     if (is_array($parsed) && isset($parsed['risk_level'])) {
         return [
             'risk_level' => $parsed['risk_level'] ?? 'unknown',
@@ -115,19 +161,23 @@ function analyse_email_with_gemini(string $sender, string $subject, string $body
         ];
     }
 
+    // 4) Fallback: infer level from keywords
     $lc = strtolower($text);
     $risk = 'unknown';
-    if (strpos($lc, 'high') !== false) $risk = 'high';
-    elseif (strpos($lc, 'medium') !== false) $risk = 'medium';
-    elseif (strpos($lc, 'low') !== false) $risk = 'low';
+    if (strpos($lc, 'high risk') !== false || strpos($lc, 'very risky') !== false) {
+        $risk = 'high';
+    } elseif (strpos($lc, 'medium risk') !== false || strpos($lc, 'somewhat suspicious') !== false) {
+        $risk = 'medium';
+    } elseif (strpos($lc, 'low risk') !== false || strpos($lc, 'likely legitimate') !== false) {
+        $risk = 'low';
+    }
 
     return [
         'risk_level' => $risk,
         'reasons'    => [$text !== '' ? $text : 'AI returned an unexpected response.'],
-        'advice'     => 'Be careful with this email.'
+        'advice'     => 'Be careful with this email. Do not click unknown links or provide personal data.'
     ];
 }
-
 /* =========================
 HANDLE FORM SUBMISSION
 ========================= */
@@ -168,16 +218,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $history_id = $conn->insert_id;
         }
 
-        // Run Gemini analysis
-        $analysis = analyse_email_with_gemini($email_address, $email_subject, $email_content, $attachments, $GEMINI_API_KEY);
+        // Run Gemini analysis (risk_level: low | medium | high | unknown)
+        $analysis = analyse_email_with_gemini(
+            $email_address,
+            $email_subject,
+            $email_content,
+            $attachments,
+            $GEMINI_API_KEY
+        );
 
-        // Map risk_level to result_type
+        // Store risk_level directly as Low / Medium / High / Unknown
         $level = strtolower($analysis['risk_level']);
-        $result_type = $level === 'high' ? 'Scam' : ($level === 'medium' ? 'Suspicious' : ($level === 'low' ? 'Legitimate' : 'Unknown'));
+        if ($level !== 'low' && $level !== 'medium' && $level !== 'high') {
+            $level = 'unknown';
+        }
+        $result_type = ucfirst($level); // "Low", "Medium", "High", "Unknown"
 
         // Update history record if we saved one
         if (isset($history_id) && $history_id) {
-            $conn->query("UPDATE search_history SET result_type='$result_type' WHERE id=$history_id");
+            $stmtUp = $conn->prepare("UPDATE search_history SET result_type=? WHERE id=?");
+            if ($stmtUp) {
+                $stmtUp->bind_param("si", $result_type, $history_id);
+                $stmtUp->execute();
+                $stmtUp->close();
+            }
         }
     }
 }
@@ -190,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-    <title>Email Scan – SCAM PROOF</title>
+    <title>Email Scan – SCAM BTEC</title>
     <style>
     body {
         background-image: url("img/background.png");
@@ -216,7 +280,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         color: white;
     }
     .result-card {
-        background: white;
+        background: #ffffff;
+        color: #000;
         border-radius: 12px;
         padding: 25px;
         margin-top: 25px;
@@ -305,8 +370,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="row justify-content-center">
                 <div class="col-md-8 col-lg-7">
                     <div class="scan-card">
-                        <form method="POST" id="emailForm">
 
+                        <h6 class="text-uppercase fw-bold mb-2" style="color:#94a3b8; letter-spacing:.05em;">
+                            <i class="bi bi-robot me-1" style="color:#60a5fa;"></i>
+                            Email Scan
+                            <span class="badge ms-2" style="background:#1e3a5f; font-size:.68rem;">~5 sec</span>
+                        </h6>
+
+                        <form method="POST" id="emailForm">
                             <div class="mb-3">
                                 <label class="form-label">Sender Email Address</label>
                                 <input type="email" class="form-control" name="email_address"
@@ -464,4 +535,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     });
     </script>
 </body>
+</html>
 </html>

@@ -46,7 +46,7 @@ function analyse_url_with_gemini(string $url, string $api_key): array {
         ];
     }
 
-    $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    $endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     $prompt = "You are a cybersecurity expert specialising in URL and phishing analysis.\n"
             . "Analyse the following URL for signs of phishing, scam, or malicious intent.\n"
             . "Consider: domain reputation, suspicious patterns (lookalike domains, excessive subdomains, "
@@ -135,11 +135,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $ai_analysis = analyse_url_with_gemini($scanned_url, $GEMINI_API_KEY);
 
-        // SRS FR4.2: Low(0-33%) = Legitimate, Medium(34-66%) = Suspicious, High(67-100%) = Scam
+        // Store risk_level directly as Low / Medium / High / Unknown
         $lvl = strtolower($ai_analysis['risk_level']);
-        $result_type = $lvl === 'high' ? 'Scam' : ($lvl === 'medium' ? 'Suspicious' : ($lvl === 'low' ? 'Legitimate' : 'Unknown'));
+        if ($lvl !== 'low' && $lvl !== 'medium' && $lvl !== 'high') {
+            $lvl = 'unknown';
+        }
+        $result_type = ucfirst($lvl); // "Low", "Medium", "High", "Unknown"
+
         if (isset($history_id) && $history_id) {
-            $conn->query("UPDATE search_history SET result_type='$result_type' WHERE id=$history_id");
+            $stmtUp = $conn->prepare("UPDATE search_history SET result_type=? WHERE id=?");
+            if ($stmtUp) {
+                $stmtUp->bind_param("si", $result_type, $history_id);
+                $stmtUp->execute();
+                $stmtUp->close();
+            }
         }
     }
 }
@@ -190,7 +199,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .example-bad  { color: #ef4444; font-weight: bold; }
 
     /* AI result card */
-    .result-card { background: white; border-radius: 12px; padding: 25px; margin-top: 22px; border: 5px solid transparent; }
+      .result-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 25px;
+        margin-top: 22px;
+        border: 5px solid transparent;
+        color: #000;
+}
     .border-high    { border-color: #dc3545; box-shadow: 0 0 20px rgba(220,53,69,0.4); }
     .border-medium  { border-color: #fd7e14; box-shadow: 0 0 20px rgba(253,126,20,0.4); }
     .border-low     { border-color: #28a745; box-shadow: 0 0 20px rgba(40,167,69,0.4); }
@@ -278,43 +294,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="col-md-9 col-lg-7">
                     <div class="scan-card">
 
-                        <!-- QUICK SCAN -->
+                        <!-- AI URL SCAN ONLY -->
                         <h6 class="text-uppercase fw-bold mb-2" style="color:#94a3b8; letter-spacing:.05em;">
-                            <i class="bi bi-lightning-charge-fill me-1" style="color:#22c55e;"></i>
-                            Quick Scan
-                            <span class="badge ms-2" style="background:#1e293b; font-size:.68rem;">Instant · No server</span>
-                        </h6>
-                        <div class="input-group mb-1">
-                            <input type="url" id="quickUrlInput" class="form-control bg-dark text-white border-secondary"
-                                   placeholder="https://example.com"
-                                   value="<?php echo htmlspecialchars($scanned_url); ?>">
-                            <button class="btn btn-success fw-bold" onclick="quickScan()">
-                                <i class="bi bi-lightning-charge me-1"></i>Check
-                            </button>
-                        </div>
-                        <small class="text-muted d-block mb-2">Instant rule-based check — results appear immediately</small>
-
-                        <div class="meter"><div id="quickBar" class="bar"></div></div>
-                        <div id="quickResult"></div>
-
-                        <div id="exampleBox" class="example-box">
-                            <div class="example-good mb-1">✅ Trusted examples</div>
-                            https://google.com &nbsp;·&nbsp; https://facebook.com &nbsp;·&nbsp; https://bankname.com
-                            <div class="example-bad mt-2 mb-1">🚨 Suspicious examples</div>
-                            http://verify-bank-login-update.com<br>
-                            http://free-gift-card-urgent.net &nbsp;·&nbsp; http://paypal-security-check123.com
-                            <div class="mt-2" style="font-size:.8rem; opacity:.7;">
-                                💡 Real websites are short, clean, and match the official brand name exactly.
-                            </div>
-                        </div>
-
-                        <hr class="border-secondary my-4">
-
-                        <!-- AI DEEP SCAN -->
-                        <!-- <h6 class="text-uppercase fw-bold mb-2" style="color:#94a3b8; letter-spacing:.05em;">
                             <i class="bi bi-robot me-1" style="color:#60a5fa;"></i>
-                            AI Deep Scan
-                            <span class="badge ms-2" style="background:#1e3a5f; font-size:.68rem;">Gemini AI · ~5 sec</span>
+                            URL Scan
+                            <span class="badge ms-2" style="background:#1e3a5f; font-size:.68rem;">~5 sec</span>
                         </h6>
                         <form method="POST" id="aiForm">
                             <div class="input-group mb-1">
@@ -324,12 +308,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                        value="<?php echo htmlspecialchars($scanned_url); ?>">
                                 <button type="submit" class="btn btn-primary fw-bold" id="scanBtn">
                                     <span class="spinner-border spinner-border-sm visually-hidden" id="loadingSpinner"></span>
-                                    <span id="btnText"><i class="bi bi-robot me-1"></i>AI Scan</span>
+                                    <span id="btnText"><i class="bi bi-robot me-1"></i>Scan URL</span>
                                     <span class="visually-hidden" id="loadingText">Scanning…</span>
                                 </button>
                             </div>
-                            <small class="text-muted">Deeper analysis via Gemini AI — takes a few seconds</small>
-                        </form> -->
+                        </form>
 
                         <!-- AI RESULT -->
                         <?php if ($ai_analysis): ?>
@@ -345,7 +328,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="result-card <?php echo $borderClass; ?>">
                             <div class="risk-banner <?php echo $bannerClass; ?>">
                                 <i class="bi <?php echo $riskIcon; ?> me-2"></i>
-                                AI RISK LEVEL: <?php echo $riskLabel; ?>
+                                RISK LEVEL: <?php echo $riskLabel; ?>
                             </div>
 
                             <h6><i class="bi bi-link-45deg me-1"></i>Scanned URL</h6>
@@ -353,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             <?php if (!empty($ai_analysis['reasons'])): ?>
                             <div class="ai-box mb-3">
-                                <h6><i class="bi bi-robot me-2"></i>AI Detection Reasons</h6>
+                                <h6><i class="bi bi-robot me-2"></i>Detection Reasons</h6>
                                 <ul class="mb-0">
                                     <?php foreach ($ai_analysis['reasons'] as $r): ?>
                                     <li><?php echo htmlspecialchars($r); ?></li>
@@ -406,111 +389,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 /* =====================================================
-   QUICK SCAN — mirrors url_tracking1.html logic
-   ===================================================== */
-function quickScan() {
-    const raw = document.getElementById('quickUrlInput').value.trim();
-    if (!raw) { alert('Please enter a URL first.'); return; }
-
-    // Sync into AI input
-    document.getElementById('aiUrlInput').value = raw;
-
-    const url = raw.toLowerCase();
-    let score = 0, reasons = [];
-
-    if (!url.startsWith('https')) {
-        score += 20;
-        reasons.push('🔓 Not using HTTPS — data could be intercepted.');
-    }
-    if (url.length > 40) {
-        score += 10;
-        reasons.push('📏 Unusually long URL — scammers hide suspicious content in long links.');
-    }
-    const scamWords = ['verify','login','bank','update','free','urgent','secure','confirm','account','password','signin'];
-    for (const w of scamWords) {
-        if (url.includes(w)) {
-            score += 30;
-            reasons.push(`⚠️ Contains suspicious keyword "${w}" — common in phishing URLs.`);
-            break;
-        }
-    }
-    if (url.includes('-') || url.includes('@')) {
-        score += 20;
-        reasons.push('🌐 Contains special characters ("-" or "@") — unusual for legitimate sites.');
-    }
-    if (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(url)) {
-        score += 30;
-        reasons.push('🖥️ Uses an IP address instead of a domain name — a major red flag.');
-    }
-    const badTLDs = ['.xyz','.tk','.ml','.ga','.cf','.gq','.top','.click','.loan'];
-    for (const t of badTLDs) {
-        if (url.includes(t)) { score += 20; reasons.push(`🚩 Suspicious domain extension "${t}".`); break; }
-    }
-
-    score = Math.min(score, 100);
-
-    // SRS FR4.2: Low 0-33%, Medium 34-66%, High 67-100%
-    let level, status, confidence;
-    if      (score === 0)  { level='low';    status='🟢 Extremely Safe'; confidence='90% – 95%'; }
-    else if (score <= 33)  { level='low';    status='🟢 Low Risk';       confidence='85% – 90%'; }
-    else if (score <= 66)  { level='medium'; status='🟠 Medium Risk';    confidence='80% – 85%'; }
-    else                   { level='high';   status='🔴 High Risk';      confidence='85% – 90%'; }
-
-    const finalReasons = reasons.length ? reasons : [
-        '🟢 No suspicious patterns detected.',
-        '🔒 Using secure HTTPS connection.',
-        '🌐 Link looks clean and legitimate.'
-    ];
-
-    // SRS FR4.3: threshold-based recommendations
-    let advice, action;
-    if (score === 0) {
-        advice = ['🟢 Highly trustworthy.', '🔍 No warning signs detected.'];
-        action = ['✅ Safe to proceed.', '🔁 Stay alert in the future.'];
-    } else if (score <= 33) {
-        advice = ['🟢 Low risk — mostly looks safe.', '🔍 No strong risk signals.'];
-        action = ['✅ Safe to use, but stay cautious.', '⚠️ Be careful with sensitive info.'];
-    } else if (score <= 66) {
-        advice = ['🟠 Medium risk — some warning signs.', '⚠️ Proceed with caution.'];
-        action = ['⚠️ Do not enter personal information.', '🔎 Verify from official sources first.'];
-    } else {
-        advice = ['🔴 High risk — strong signs of danger.', '🚨 May try to steal your information.'];
-        action = ['🚫 Do NOT use this website.', '🛑 Do not enter any passwords or personal data.'];
-    }
-
-    const bar = document.getElementById('quickBar');
-    bar.style.width = score + '%';
-    bar.style.background = score >= 67
-        ? 'linear-gradient(90deg,#dc2626,#ef4444)'
-        : score >= 34 ? 'linear-gradient(90deg,#f59e0b,orange)'
-                      : 'linear-gradient(90deg,#16a34a,#22c55e)';
-
-    document.getElementById('exampleBox').style.display = 'none';
-    document.getElementById('quickResult').innerHTML = `
-        <div class="quick-panel ${level}">
-            <b>Status:</b> ${status} &nbsp;|&nbsp; <b>Score:</b> ${score}% &nbsp;|&nbsp; <b>Confidence:</b> ${confidence}
-        </div>
-        <div class="quick-panel ${level}"><b>Why this result?</b><br>${finalReasons.join('<br>')}</div>
-        <div class="quick-panel ${level}"><b>What to do?</b><br>${[...advice,...action].join('<br>')}</div>`;
-
-    if (score >= 67) {
-        const toast = document.getElementById('alertToast');
-        toast.style.display = 'block';
-        try { new Audio('https://www.soundjay.com/buttons/beep-01a.mp3').play(); } catch(e) {}
-        setTimeout(() => { toast.style.display = 'none'; }, 3500);
-    }
-}
-
-/* =====================================================
    AI FORM — loading spinner
    ===================================================== */
-const aiForm    = document.getElementById('aiForm');
-const scanBtn   = document.getElementById('scanBtn');
-const spinner   = document.getElementById('loadingSpinner');
-const btnText   = document.getElementById('btnText');
+const aiForm      = document.getElementById('aiForm');
+const scanBtn     = document.getElementById('scanBtn');
+const spinner     = document.getElementById('loadingSpinner');
+const btnText     = document.getElementById('btnText');
 const loadingText = document.getElementById('loadingText');
 
 function resetBtn() {
+    if (!spinner || !loadingText || !btnText || !scanBtn) return;
     spinner.classList.add('visually-hidden');
     loadingText.classList.add('visually-hidden');
     btnText.classList.remove('visually-hidden');
@@ -518,13 +406,16 @@ function resetBtn() {
 }
 resetBtn();
 window.addEventListener('pageshow', resetBtn);
-aiForm.addEventListener('submit', function () {
-    if (!aiForm.checkValidity()) return;
-    spinner.classList.remove('visually-hidden');
-    loadingText.classList.remove('visually-hidden');
-    btnText.classList.add('visually-hidden');
-    scanBtn.disabled = true;
-});
+
+if (aiForm) {
+    aiForm.addEventListener('submit', function () {
+        if (!aiForm.checkValidity()) return;
+        spinner.classList.remove('visually-hidden');
+        loadingText.classList.remove('visually-hidden');
+        btnText.classList.add('visually-hidden');
+        scanBtn.disabled = true;
+    });
+}
 
 // Sync both inputs while typing
 document.getElementById('quickUrlInput').addEventListener('input', function () {
