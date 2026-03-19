@@ -77,7 +77,7 @@ require_once '../Database/database.php';
     <nav class="navbar navbar-expand-lg navbar-dark w-100 fixed-top shadow-sm">
         <div class="container-fluid">
 
-            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM BTEC</a>
+            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM PROOF</a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -94,10 +94,10 @@ require_once '../Database/database.php';
                         <a class="nav-link active" aria-current="page" href="phonenumber.php">PHONE NUMBER</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">URL</a>
-                    </li>
+                        <a class="nav-link active" aria-current="page" href="url.php">URL</a>
+                    </li> 
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">EMAIL</a>
+                        <a class="nav-link active" aria-current="page" href="email.php">EMAIL</a>
                     </li>
                 </ul>
 

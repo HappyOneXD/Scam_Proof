@@ -118,7 +118,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <div class="container-fluid">
 
             <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">
-                SCAM BTEC
+                SCAM PROOF
             </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -138,11 +138,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link active" href="#">URL</a>
+                        <a class="nav-link active" href="url.php">URL</a>
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link active" href="#">EMAIL</a>
+                        <a class="nav-link active" href="email.php">EMAIL</a>
                     </li>
 
                 </ul>
