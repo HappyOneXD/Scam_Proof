@@ -110,7 +110,7 @@ $user = $result->fetch_assoc();
     <nav class="navbar navbar-expand-lg navbar-dark w-100 fixed-top shadow-sm">
         <div class="container-fluid">
 
-            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM BTEC</a>
+            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM PROOF</a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>

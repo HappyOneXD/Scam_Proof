@@ -1,6 +1,16 @@
 <?php
 session_start();
 require_once '../Database/database.php';
+require_once 'functions/translate.php';
+
+// Handle language switch
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['en','vi'])) {
+    $_SESSION['lang'] = $_GET['lang'];
+    $currentPage = strtok($_SERVER["REQUEST_URI"], '?');
+    header("Location: $currentPage");
+    exit;
+}
+$lang = $_SESSION['lang'] ?? 'en';
 
 /* =========================
 GEMINI API KEY
@@ -109,6 +119,85 @@ function analyse_url_with_gemini(string $url, string $api_key): array {
 }
 
 /* =========================
+GAMBLING POST-PROCESSING
+========================= */
+/**
+ * Adjust AI analysis for gambling URLs/ads.
+ * - Gambling site itself: at least medium risk.
+ * - Site that advertises gambling: at least medium risk.
+ * - Always add a reason entry explaining the gambling context.
+ */
+function apply_gambling_rules(string $url, array $analysis): array {
+    global $lang;
+
+    $lowerUrl   = strtolower($url);
+    $lowerText  = strtolower(implode(" ", $analysis['reasons'] ?? []) . " " . ($analysis['advice'] ?? ''));
+
+    $keywords = ['casino','bet','betting','sportsbook','slot','jackpot','poker','baccarat','roulette','bookmaker','wager','lotto','lottery','gamble','gambling'];
+    $isGamblingUrl = false;
+
+    foreach ($keywords as $kw) {
+        if (str_contains($lowerUrl, $kw)) {
+            $isGamblingUrl = true;
+            break;
+        }
+    }
+
+    $mentionedGambling = false;
+    foreach ($keywords as $kw) {
+        if (str_contains($lowerText, $kw)) {
+            $mentionedGambling = true;
+            break;
+        }
+    }
+
+    if (!$isGamblingUrl && !$mentionedGambling) {
+        return $analysis; // nothing to change
+    }
+
+    $risk = strtolower($analysis['risk_level'] ?? 'unknown');
+
+    // Localised reason/advice templates
+    if ($lang === 'vi') {
+        $siteReason   = "Trang web này có vẻ là trang cờ bạc/cá cược trực tuyến, tiềm ẩn rủi ro tài chính và gây nghiện.";
+        $adReason     = "Trang web này có vẻ đang quảng cáo hoặc giới thiệu dịch vụ cờ bạc/cá cược trực tuyến.";
+        $defaultAdvice = "Hãy cẩn trọng với các trang liên quan đến cờ bạc, tránh nhấp vào liên kết và không cung cấp thông tin tài chính.";
+    } else {
+        $siteReason   = "This site appears to be a gambling or betting website, which carries financial and addiction risks.";
+        $adReason     = "This site appears to promote or advertise online gambling services.";
+        $defaultAdvice = "Be cautious with gambling-related sites; they can cause financial loss and may not be regulated.";
+    }
+
+    if ($isGamblingUrl) {
+        // The URL itself looks like a gambling site
+        if ($risk === 'low' || $risk === 'unknown') {
+            $risk = 'medium';
+        }
+        $reasonText = $siteReason;
+    } else {
+        // Site that advertises/promotes gambling
+        if ($risk === 'low' || $risk === 'unknown') {
+            $risk = 'medium';
+        }
+        $reasonText = $adReason;
+    }
+
+    $analysis['risk_level'] = $risk;
+    if (!isset($analysis['reasons']) || !is_array($analysis['reasons'])) {
+        $analysis['reasons'] = [];
+    }
+    if (!in_array($reasonText, $analysis['reasons'], true)) {
+        $analysis['reasons'][] = $reasonText;
+    }
+
+    if (empty($analysis['advice'])) {
+        $analysis['advice'] = $defaultAdvice;
+    }
+
+    return $analysis;
+}
+
+/* =========================
 HANDLE FORM SUBMISSION
 ========================= */
 $ai_analysis = null;
@@ -134,6 +223,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $ai_analysis = analyse_url_with_gemini($scanned_url, $GEMINI_API_KEY);
+
+        // Apply custom gambling rules (force at least medium, add reason)
+        $ai_analysis = apply_gambling_rules($scanned_url, $ai_analysis);
 
         // Store risk_level directly as Low / Medium / High / Unknown
         $lvl = strtolower($ai_analysis['risk_level']);
@@ -161,7 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-    <title>URL Scan – SCAM BTEC</title>
+    <title><?php echo t("Scam Detection Platform"); ?></title>
     <style>
     body {
         background-image: url("img/background.png");
@@ -223,6 +315,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .footer-link   { color: #ddd; text-decoration: none; }
     .footer-link:hover { color: white; text-decoration: underline; }
 
+    /* language buttons (reuse) */
+    .lang-btn {
+        display: flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+    .lang-btn.active {
+        background: #0ea5e9;
+        color: white;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+    }
+    .flag-img {
+        width: 20px;
+        height: 15px;
+        object-fit: cover;
+        border-radius: 2px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .lang-btn:hover:not(.active) {
+        background: #e2e8f0;
+        transform: translateY(-1px);
+    }
+
     @keyframes fadeInDown {
         from { opacity:0; transform:translate(-50%,-16px); }
         to   { opacity:1; transform:translate(-50%,0); }
@@ -243,22 +367,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- NAVBAR -->
     <nav class="navbar navbar-expand-lg navbar-dark w-100 fixed-top shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM BTEC</a>
+            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php"><?php echo t("SCAM PROOF"); ?></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0 mx-4 gap-5 fs-6">
-                    <li class="nav-item"><a class="nav-link" href="index.php">HOME</a></li>
-                    <li class="nav-item"><a class="nav-link" href="phonenumber.php">PHONE NUMBER</a></li>
-                    <li class="nav-item"><a class="nav-link active" href="url.php">URL</a></li>
-                    <li class="nav-item"><a class="nav-link" href="email.php">EMAIL</a></li>
+                    <li class="nav-item"><a class="nav-link" href="index.php"><?php echo t("HOME");?></a></li>
+                    <li class="nav-item"><a class="nav-link" href="phonenumber.php"><?php echo t("PHONE NUMBER");?></a></li>
+                    <li class="nav-item"><a class="nav-link active" href="url.php"><?php echo t("URL");?></a></li>
+                    <li class="nav-item"><a class="nav-link" href="email.php"><?php echo t("EMAIL");?></a></li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
+
+                    <?php $lang = $_SESSION['lang'] ?? 'en'; ?>
+                    <div class="d-flex gap-2 ms-3 align-items-center">
+                        <a href="?lang=en" class="lang-btn <?php echo $lang=='en' ? 'active' : ''; ?>">
+                            <img src="https://flagcdn.com/w40/gb.png" class="flag-img" alt="English">
+                            <span class="ms-1">EN</span>
+                        </a>
+                        <a href="?lang=vi" class="lang-btn <?php echo $lang=='vi' ? 'active' : ''; ?>">
+                            <img src="https://flagcdn.com/w40/vn.png" class="flag-img" alt="Vietnamese">
+                            <span class="ms-1">VI</span>
+                        </a>
+                    </div>
+
                     <?php if (isset($_SESSION['user_id'])): ?>
                     <div class="dropdown">
                         <a class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
-                           href="#" role="button" data-bs-toggle="dropdown">
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-person-circle fs-3"></i>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end shadow">
@@ -267,14 +404,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <?php echo htmlspecialchars($_SESSION['user_name']); ?>
                                 </a>
                             </li>
-                            <li><a class="dropdown-item" href="history.php"><i class="bi bi-clock-history me-2"></i>History</a></li>
+                            <li>
+                                <a class="dropdown-item" href="history.php">
+                                    <i class="bi bi-clock-history me-2"></i>
+                                    <?php echo t("History"); ?>
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="logout.php"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="logout.php">
+                                    <i class="bi bi-box-arrow-right me-2"></i>
+                                    <?php echo t("Logout"); ?>
+                                </a>
+                            </li>
                         </ul>
                     </div>
                     <?php else: ?>
-                    <a href="login.php" class="btn btn-outline-info">Sign in</a>
-                    <a href="register.php" class="btn btn-outline-info">Sign up</a>
+                    <a href="login.php" class="btn btn-outline-info"><?php echo t("Sign in"); ?></a>
+                    <a href="register.php" class="btn btn-outline-info"><?php echo t("Sign up"); ?></a>
                     <?php endif; ?>
                 </div>
             </div>
@@ -284,10 +431,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- CONTENT -->
     <div class="overlay">
         <div class="container mt-5 pt-5">
-            <h2 class="text-center mb-4 mt-4">URL SCAN</h2>
+            <h2 class="text-center mb-4 mt-4"><?php echo t("URL Scan"); ?></h2>
 
-            <?php if ($error): ?>
-            <div class="alert alert-danger text-center"><?php echo htmlspecialchars($error); ?></div>
+           <?php if ($error): ?>
+            <div class="alert alert-danger text-center"><?php echo htmlspecialchars(t($error)); ?></div>
             <?php endif; ?>
 
             <div class="row justify-content-center">
@@ -297,7 +444,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <!-- AI URL SCAN ONLY -->
                         <h6 class="text-uppercase fw-bold mb-2" style="color:#94a3b8; letter-spacing:.05em;">
                             <i class="bi bi-robot me-1" style="color:#60a5fa;"></i>
-                            URL Scan
+                            <?php echo t("URL Scan"); ?>
                             <span class="badge ms-2" style="background:#1e3a5f; font-size:.68rem;">~5 sec</span>
                         </h6>
                         <form method="POST" id="aiForm">
@@ -328,15 +475,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="result-card <?php echo $borderClass; ?>">
                             <div class="risk-banner <?php echo $bannerClass; ?>">
                                 <i class="bi <?php echo $riskIcon; ?> me-2"></i>
-                                RISK LEVEL: <?php echo $riskLabel; ?>
+                            <?php echo t("Risk Level:"); ?> <?php echo $riskLabel; ?>
                             </div>
 
-                            <h6><i class="bi bi-link-45deg me-1"></i>Scanned URL</h6>
+                            <h6><i class="bi bi-link-45deg me-1"></i><?php echo t("Scanned URL");?></h6>
                             <div class="url-display mb-3"><?php echo htmlspecialchars($scanned_url); ?></div>
 
                             <?php if (!empty($ai_analysis['reasons'])): ?>
                             <div class="ai-box mb-3">
-                                <h6><i class="bi bi-robot me-2"></i>Detection Reasons</h6>
+                                <h6><i class="bi bi-robot me-2"></i><?php echo t("AI Detection Reasons");?></h6>
                                 <ul class="mb-0">
                                     <?php foreach ($ai_analysis['reasons'] as $r): ?>
                                     <li><?php echo htmlspecialchars($r); ?></li>
@@ -348,20 +495,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php if (!empty($ai_analysis['advice'])): ?>
                             <div class="alert alert-info mb-2">
                                 <i class="bi bi-lightbulb me-2"></i>
-                                <strong>Advice:</strong> <?php echo htmlspecialchars($ai_analysis['advice']); ?>
+                                <strong><?php echo t("Advice:");?></strong> <?php echo htmlspecialchars($ai_analysis['advice']); ?>
                             </div>
                             <?php endif; ?>
 
                             <div class="alert alert-warning mb-3">
                                 <i class="bi bi-shield-exclamation me-2"></i>
-                                Never enter passwords or personal data on suspicious sites.
+                                <?php echo t("Never enter passwords or personal data on suspicious sites.");?>
                             </div>
+
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    This information is provided for reference purposes only and should not be considered absolute.
+                                    We do not guarantee the accuracy of the results and are not responsible for decisions made based on this information.
+                                </small>
+                            </div>
+
                             <div class="text-center">
                                 <a href="url.php" class="btn btn-secondary me-2">
-                                    <i class="bi bi-arrow-left me-1"></i>Scan Another
+                                    <i class="bi bi-arrow-left me-1"></i><?php echo t("Scan Another");?>
                                 </a>
                                 <a href="index.php" class="btn btn-outline-secondary">
-                                    <i class="bi bi-house me-1"></i>Home
+                                    <i class="bi bi-house me-1"></i><?php echo t("HOME");?>
                                 </a>
                             </div>
                         </div>
@@ -377,11 +532,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <footer class="py-3 border-top footer-custom mt-auto">
         <div class="container">
             <div class="d-flex justify-content-between align-items-center small">
-                <div>© 2026 Scam Detection Platform – BTEC FPT</div>
+                <div><?php echo t("© 2026 Scam Detection Platform – BTEC FPT"); ?></div>
                 <div>
-                    <a href="#" class="footer-link">Privacy Policy</a>
+                    <a href="#" class="footer-link"><?php echo t("Privacy Policy");?></a>
                     &middot;
-                    <a href="#" class="footer-link">Terms & Conditions</a>
+                    <a href="#" class="footer-link"><?php echo t("Terms & Conditions");?></a>
                 </div>
             </div>
         </div>

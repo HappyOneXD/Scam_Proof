@@ -1,6 +1,20 @@
 <?php
 session_start();
 require_once '../Database/database.php';
+require_once 'functions/translate.php';
+
+// Xử lý thay đổi ngôn ngữ
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['en','vi'])) {
+    $_SESSION['lang'] = $_GET['lang'];
+
+    // Lấy đúng trang hiện tại (không bị quay về index)
+    $currentPage = strtok($_SERVER["REQUEST_URI"], '?');
+
+    header("Location: $currentPage");
+    exit;
+}
+
+$lang = $_SESSION['lang'] ?? 'en';
 
 if(!isset($_SESSION['user_id'])){
 header("Location: login.php");
@@ -45,7 +59,7 @@ $result = $stmt->get_result();
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 
-    <title>Search History</title>
+    <title><?php echo t("Search History");?></title>
 
     <style>
     body {
@@ -67,6 +81,38 @@ $result = $stmt->get_result();
     .navbar {
         background: rgba(0, 0, 0, 0.5);
         backdrop-filter: blur(6px);
+    }
+
+    /* language buttons */
+    .lang-btn {
+        display: flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+    .lang-btn.active {
+        background: #0ea5e9;
+        color: white;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 10px rgba(14,165,233,0.4);
+    }
+    .flag-img {
+        width: 20px;
+        height: 15px;
+        object-fit: cover;
+        border-radius: 2px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .lang-btn:hover:not(.active) {
+        background: #e2e8f0;
+        transform: translateY(-1px);
     }
 
     .history-card {
@@ -119,7 +165,7 @@ $result = $stmt->get_result();
     <nav class="navbar navbar-expand-lg navbar-dark w-100 fixed-top shadow-sm">
         <div class="container-fluid">
 
-            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM BTEC</a>
+            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php"><?php echo t("SCAM PROOF"); ?></a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -130,21 +176,34 @@ $result = $stmt->get_result();
                 <!-- Menu trái -->
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0 mx-4 gap-5 fs-6">
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="index.php">HOME</a>
+                        <a class="nav-link active" aria-current="page" href="index.php"><?php echo t("HOME");?></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="phonenumber.php">PHONE NUMBER</a>
+                        <a class="nav-link active" aria-current="page" href="phonenumber.php"><?php echo t("PHONE NUMBER");?></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">URL</a>
+                        <a class="nav-link active" aria-current="page" href="url.php"><?php echo t("URL");?></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="#">EMAIL</a>
+                        <a class="nav-link active" aria-current="page" href="email.php"><?php echo t("EMAIL");?></a>
                     </li>
                 </ul>
 
                 <!-- Menu phải (User) -->
                 <div class="d-flex align-items-center gap-3">
+
+                    <?php $lang = $_SESSION['lang'] ?? 'en'; ?>
+                    <div class="d-flex gap-2 ms-3 align-items-center">
+                        <a href="?lang=en" class="lang-btn <?php echo $lang=='en' ? 'active' : ''; ?>">
+                            <img src="https://flagcdn.com/w40/gb.png" class="flag-img" alt="English">
+                            <span class="ms-1">EN</span>
+                        </a>
+
+                        <a href="?lang=vi" class="lang-btn <?php echo $lang=='vi' ? 'active' : ''; ?>">
+                            <img src="https://flagcdn.com/w40/vn.png" class="flag-img" alt="Vietnamese">
+                            <span class="ms-1">VI</span>
+                        </a>
+                    </div>
 
                     <?php if (isset($_SESSION['user_id'])): ?>
 
@@ -167,7 +226,7 @@ $result = $stmt->get_result();
                             <li>
                                 <a class="dropdown-item" href="history.php">
                                     <i class="bi bi-clock-history me-2"></i>
-                                    History
+                                    <?php echo t("History"); ?>
                                 </a>
                             </li>
 
@@ -178,7 +237,7 @@ $result = $stmt->get_result();
                             <li>
                                 <a class="dropdown-item text-danger" href="logout.php">
                                     <i class="bi bi-box-arrow-right me-2"></i>
-                                    Logout
+                                    <?php echo t("Logout"); ?>
                                 </a>
                             </li>
 
@@ -188,11 +247,11 @@ $result = $stmt->get_result();
                     <?php else: ?>
 
                     <a href="login.php" class="btn btn-outline-info">
-                        Sign in
+                        <?php echo t("Sign in");?>
                     </a>
 
                     <a href="register.php" class="btn btn-outline-info">
-                        Sign up
+                        <?php echo t("Sign up");?>
                     </a>
 
                     <?php endif; ?>
@@ -210,7 +269,7 @@ $result = $stmt->get_result();
 
             <div class="d-flex justify-content-between align-items-center mb-3">
 
-                <h1 class="text-white">Phone Search History</h1>
+                <h1 class="text-white"><?php echo t("Search History"); ?></h1>
 
                 <form class="d-flex" method="GET" action="history.php">
 
@@ -220,11 +279,11 @@ $result = $stmt->get_result();
                             <i class="bi bi-search"></i>
                         </span>
 
-                        <input class="form-control" type="text" name="search" placeholder="Search phone or date"
+                        <input class="form-control" type="text" name="search" placeholder="<?php echo t("Search phone or date");?>"
                             value="<?php echo $_GET['search'] ?? ''; ?>">
 
                         <button class="btn btn-success" type="submit">
-                            Search
+                            <?php echo t("Search");?>
                         </button>
 
                     </div>
@@ -243,8 +302,9 @@ $result = $stmt->get_result();
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Phone Number</th>
-                            <th>Result</th>
+                            <th>Query</th>
+                            <th>Type</th>
+                            <th>Risk</th>
                             <th>Date</th>
                         </tr>
                     </thead>
@@ -272,31 +332,29 @@ $result = $stmt->get_result();
                             <td><?php echo $i++; ?></td>
 
                             <td>
-                                <a href="result.php?phone=<?php echo $row['phonenumber']; ?>">
-                                    <?php echo $row['phonenumber']; ?>
-                                </a>
+                                <?php echo htmlspecialchars($row['phonenumber']); ?>
                             </td>
 
                             <td>
+                                <?php echo htmlspecialchars($row['scan_type'] ?? 'Phone'); ?>
+                            </td>
 
+                            <td>
                                 <?php
-                                    $type=$row['result_type'];
-
-                                    if($type=="Legitimate"){
-                                    echo "<span class='status-safe'>Legitimate</span>";
-                                    }
-                                    elseif($type=="Scam"){
-                                    echo "<span class='status-scam'>Scam</span>";
-                                    }
-                                    else{
-                                    echo "<span class='status-unknown'>Unknown</span>";
+                                    $type = $row['result_type'];
+                                    if ($type === 'High') {
+                                        echo "<span class='status-scam'>High</span>";
+                                    } elseif ($type === 'Medium') {
+                                        echo "<span class='status-unknown'>Medium</span>";
+                                    } elseif ($type === 'Low') {
+                                        echo "<span class='status-safe'>Low</span>";
+                                    } else {
+                                        echo "<span class='status-unknown'>Unknown</span>";
                                     }
                                 ?>
-
                             </td>
 
                             <td><?php echo $row['searched_at']; ?></td>
-
                         </tr>
 
                         <?php } ?>
@@ -312,9 +370,9 @@ $result = $stmt->get_result();
 
             <div class="text-end mt-3">
 
-                <a href="index.php" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Back
-                </a>
+                    <a href="index.php" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> <?php echo t("← Back");?>
+                    </a>
 
             </div>
 
@@ -333,9 +391,9 @@ $result = $stmt->get_result();
                 </div>
 
                 <div>
-                    <a href="#" class="footer-link">Privacy Policy</a>
+                    <a href="#" class="footer-link"><?php echo t("Privacy Policy");?></a>
                     &middot;
-                    <a href="#" class="footer-link">Terms & Conditions</a>
+                    <a href="#" class="footer-link"><?php echo t("Terms & Conditions");?></a>
                 </div>
 
             </div>

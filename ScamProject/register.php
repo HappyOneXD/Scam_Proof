@@ -13,6 +13,7 @@ $password_error="";
 $confirm_error="";
 $dob_error="";
 $gender_error="";
+$captcha_error="";
 $success="";
 
 if($_SERVER["REQUEST_METHOD"]=="POST"){
@@ -57,10 +58,50 @@ if($gender!="Male" && $gender!="Female"){
 $gender_error="Please select gender.";
 }
 
+/* CAPTCHA VALIDATION */
+$captcha_secret   = '6LdZIZAsAAAAAMaCbAafPulArIFOKcvUFpbj1cG4';
+$captcha_response = $_POST['g-recaptcha-response'] ?? '';
+
+if(empty($captcha_response)){
+    $captcha_error = "Please complete the CAPTCHA.";
+} else {
+    $verify_url = 'https://www.google.com/recaptcha/api/siteverify';
+    $post_data = http_build_query([
+        'secret'   => $captcha_secret,
+        'response' => $captcha_response,
+        'remoteip' => $_SERVER['REMOTE_ADDR'] ?? ''
+    ]);
+
+    $context = stream_context_create([
+        'http' => [
+            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+            'method'  => 'POST',
+            'content' => $post_data,
+            'timeout' => 5,
+        ]
+    ]);
+
+    $verify = @file_get_contents($verify_url, false, $context);
+    if($verify === false){
+        $captcha_error = "Could not verify CAPTCHA. Please try again.";
+    } else {
+        $captcha_data = json_decode($verify, true);
+        if(empty($captcha_data['success'])){
+            $captcha_error = "CAPTCHA verification failed. Please try again.";
+        }
+    }
+}
+
 /* CHECK USERNAME EXIST */
 
-if(empty($username_error) && empty($password_error) && empty($confirm_error) && empty($dob_error) && empty($gender_error)){
-
+if(
+    empty($username_error) &&
+    empty($password_error) &&
+    empty($confirm_error) &&
+    empty($dob_error) &&
+    empty($gender_error) &&
+    empty($captcha_error)
+){
 $sql="SELECT id FROM users WHERE username=?";
 $stmt=$conn->prepare($sql);
 $stmt->bind_param("s",$username);
@@ -187,7 +228,7 @@ $gender="";
     </style>
 
 </head>
-
+     <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 <body>
 
     <div class="overlay"></div>
@@ -286,6 +327,11 @@ $gender="";
 
                 <div class="error"><?php echo $confirm_error ?></div>
 
+            </div>
+
+            <div class="mb-3">
+                <div class="g-recaptcha" data-sitekey="6LdZIZAsAAAAAK3DsAJzTYWl1dZcA3mrJlxpG-hG"></div>
+                <div class="error"><?php echo $captcha_error; ?></div>
             </div>
 
             <div class="d-flex justify-content-between mt-4">

@@ -1,6 +1,16 @@
 <?php
 session_start();
 require '../Database/database.php';
+require_once 'functions/translate.php';
+
+// Language switch
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['en','vi'])) {
+    $_SESSION['lang'] = $_GET['lang'];
+    $currentPage = strtok($_SERVER["REQUEST_URI"], '?');
+    header("Location: $currentPage");
+    exit;
+}
+$lang = $_SESSION['lang'] ?? 'en';
 
 $otp = "";
 $message = "";
@@ -16,18 +26,14 @@ if(isset($_POST['check_user'])){
     $result = $stmt->get_result();
 
     if($result->num_rows > 0){
-
         $otp = rand(100000,999999);
-
         $_SESSION['reset_user'] = $username;
         $_SESSION['otp'] = $otp;
-
     }else{
-        $message = "Username not found!";
+        $message = t("Username not found!");
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -39,7 +45,7 @@ if(isset($_POST['check_user'])){
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
 
-    <title>Forgot Password</title>
+    <title><?php echo t("Forgot Password");?></title>
 
     <style>
     body {
@@ -66,6 +72,37 @@ if(isset($_POST['check_user'])){
         padding: 30px;
         border-radius: 10px;
     }
+
+    .lang-btn {
+        display: flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+    .lang-btn.active {
+        background: #0ea5e9;
+        color: white;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 10px rgba(14,165,233,0.4);
+    }
+    .flag-img {
+        width: 20px;
+        height: 15px;
+        object-fit: cover;
+        border-radius: 2px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .lang-btn:hover:not(.active) {
+        background: #e2e8f0;
+        transform: translateY(-1px);
+    }
     </style>
 
 </head>
@@ -74,9 +111,22 @@ if(isset($_POST['check_user'])){
 
     <div class="overlay">
 
+        <?php $lang = $_SESSION['lang'] ?? 'en'; ?>
+        <div class="lang-switch position-absolute top-0 end-0 m-3 d-flex gap-2">
+            <a href="?lang=en" class="lang-btn <?php echo $lang=='en' ? 'active' : ''; ?>">
+                <img src="https://flagcdn.com/w40/gb.png" class="flag-img" alt="English">
+                <span class="ms-1">EN</span>
+            </a>
+
+            <a href="?lang=vi" class="lang-btn <?php echo $lang=='vi' ? 'active' : ''; ?>">
+                <img src="https://flagcdn.com/w40/vn.png" class="flag-img" alt="Vietnamese">
+                <span class="ms-1">VI</span>
+            </a>
+        </div>
+
         <div class="form-box">
 
-            <h3 class="mb-4 text-center">Forgot Password</h3>
+            <h3 class="mb-4 text-center"><?php echo t("Forgot Password");?></h3>
 
             <?php if($message!=""){ ?>
             <div class="alert alert-danger">
@@ -86,10 +136,11 @@ if(isset($_POST['check_user'])){
 
             <form method="POST">
 
-                <input type="text" name="username" class="form-control mb-3" placeholder="Enter username" required>
+                <input type="text" name="username" class="form-control mb-3"
+                       placeholder="<?php echo t('Enter username');?>" required>
 
                 <button name="check_user" class="btn btn-primary w-100">
-                    <i class="bi bi-send"></i> Send OTP
+                    <i class="bi bi-send"></i> <?php echo t("Send OTP");?>
                 </button>
 
             </form>
@@ -99,15 +150,16 @@ if(isset($_POST['check_user'])){
             <hr>
 
             <div class="alert alert-warning">
-                OTP generated (Demo only): <b id="otpText"><?php echo $otp; ?></b>
+                <?php echo t("OTP generated (demo only):");?> <b id="otpText"><?php echo $otp; ?></b>
             </div>
 
             <form action="verify_otp.php" method="POST">
 
-                <input type="text" id="otpInput" name="otp" class="form-control mb-3" placeholder="Enter OTP" required>
+                <input type="text" id="otpInput" name="otp" class="form-control mb-3"
+                       placeholder="<?php echo t('Enter OTP');?>" required>
 
                 <button class="btn btn-success w-100">
-                    Verify OTP
+                    <?php echo t("Verify OTP");?>
                 </button>
 
             </form>

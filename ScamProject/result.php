@@ -637,7 +637,7 @@ exit;
     <nav class="navbar navbar-expand-lg navbar-dark w-100 fixed-top shadow-sm">
         <div class="container-fluid">
 
-            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM BTEC</a>
+            <a class="navbar-brand fw-bold fs-3 me-5" href="index.php">SCAM PROOF</a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -846,7 +846,6 @@ echo "<li>".htmlspecialchars($t)."</li>";
 <?php endif; ?>
 
 </div>
-
         <div class="safety-box mt-3">
 
             <strong>
@@ -868,6 +867,12 @@ echo "<li>".htmlspecialchars($t)."</li>";
 
         </div>
 
+        <div class="mt-3">
+            <small class="text-muted">
+                This information is provided for reference purposes only and should not be considered absolute.
+                We do not guarantee the accuracy of the results and are not responsible for decisions made based on this information.
+            </small>
+        </div>
 
         <div class="mt-4 text-center">
 

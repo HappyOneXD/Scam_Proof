@@ -1,20 +1,30 @@
 <?php
 session_start();
 require '../Database/database.php';
+require_once 'functions/translate.php';
+
+// language switch
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['en','vi'])) {
+    $_SESSION['lang'] = $_GET['lang'];
+    $currentPage = strtok($_SERVER["REQUEST_URI"], '?');
+    header("Location: $currentPage");
+    exit;
+}
+$lang = $_SESSION['lang'] ?? 'en';
 
 $message = "";
 
 if(isset($_POST['reset'])){
 
     if(!isset($_SESSION['reset_user'])){
-        die("Unauthorized access");
+        die(t("Unauthorized access"));
     }
 
     $password = $_POST['password'];
     $confirm  = $_POST['confirm'];
 
     if($password != $confirm){
-        $message = "Password does not match!";
+        $message = t("Password does not match!");
     } else {
 
         $hash = password_hash($password, PASSWORD_BCRYPT);
@@ -25,15 +35,14 @@ if(isset($_POST['reset'])){
         $stmt->bind_param("ss", $hash, $username);
 
         if($stmt->execute()){
-            $message = "Password updated successfully!";
+            $message = t("Password updated successfully!");
             session_destroy();
         } else {
-            $message = "Something went wrong!";
+            $message = t("Something went wrong!");
         }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -44,7 +53,7 @@ if(isset($_POST['reset'])){
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
 
-    <title>Reset Password</title>
+    <title><?php echo t("Reset Password");?></title>
 
     <style>
     body {
@@ -71,6 +80,37 @@ if(isset($_POST['reset'])){
         padding: 30px;
         border-radius: 10px;
     }
+
+    .lang-btn {
+        display: flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+    .lang-btn.active {
+        background: #0ea5e9;
+        color: white;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 10px rgba(14,165,233,0.4);
+    }
+    .flag-img {
+        width: 20px;
+        height: 15px;
+        object-fit: cover;
+        border-radius: 2px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .lang-btn:hover:not(.active) {
+        background: #e2e8f0;
+        transform: translateY(-1px);
+    }
     </style>
 </head>
 
@@ -78,9 +118,21 @@ if(isset($_POST['reset'])){
 
     <div class="overlay">
 
+        <?php $lang = $_SESSION['lang'] ?? 'en'; ?>
+        <div class="lang-switch position-absolute top-0 end-0 m-3 d-flex gap-2">
+            <a href="?lang=en" class="lang-btn <?php echo $lang=='en' ? 'active' : ''; ?>">
+                <img src="https://flagcdn.com/w40/gb.png" class="flag-img" alt="English">
+                EN
+            </a>
+            <a href="?lang=vi" class="lang-btn <?php echo $lang=='vi' ? 'active' : ''; ?>">
+                <img src="https://flagcdn.com/w40/vn.png" class="flag-img" alt="Vietnamese">
+                VI
+            </a>
+        </div>
+
         <div class="form-box">
 
-            <h2 class="text-center mb-4">Reset Password</h2>
+            <h2 class="text-center mb-4"><?php echo t("Reset Password");?></h2>
 
             <?php if($message): ?>
             <div class="alert alert-info">
@@ -91,22 +143,22 @@ if(isset($_POST['reset'])){
             <form method="POST">
 
                 <div class="mb-3">
-                    <label class="form-label">New Password</label>
+                    <label class="form-label"><?php echo t("New Password");?></label>
                     <input type="password" class="form-control" name="password" required>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Confirm Password</label>
+                    <label class="form-label"><?php echo t("Confirm Password");?></label>
                     <input type="password" class="form-control" name="confirm" required>
                 </div>
 
                 <div class="d-flex gap-2">
                     <button name="reset" class="btn btn-primary w-50">
-                        <i class="bi bi-key"></i> Reset password
+                        <i class="bi bi-key"></i> <?php echo t("Reset password");?>
                     </button>
 
                     <a href="login.php" class="btn btn-secondary w-50">
-                        Back
+                        <?php echo t("← Back");?>
                     </a>
                 </div>
 
